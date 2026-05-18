@@ -2,6 +2,18 @@
 
 Instructions for AI coding assistants and developers working on the hermes-agent codebase.
 
+<!-- HONCHO_LIVE_STATE_BOUNDARY_START -->
+## Honcho / live-state boundary
+
+Honcho is durable memory only: stable user preferences, standing authorisations, long-lived role facts, and reusable project conventions. Do not store active task state in Honcho: no “currently working on…”, transient blockers, PR/issue/commit/workflow IDs, service-health snapshots, auth/device-code flows, queue state, raw logs, or half-finished work.
+
+Use the right live-state source instead:
+- Mission Control status via `~/.local/bin/hermes-status` for lifecycle state.
+- Native Hermes-NATS inbox/report/sent state for inter-agent work and queue visibility.
+- Obsidian for project plans/runbooks.
+- Skills for reusable procedures.
+<!-- HONCHO_LIVE_STATE_BOUNDARY_END -->
+
 ## Development Environment
 
 ```bash

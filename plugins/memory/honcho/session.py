@@ -11,6 +11,10 @@ from datetime import datetime
 from typing import Any, TYPE_CHECKING
 
 from plugins.memory.honcho.client import get_honcho_client
+from plugins.memory.honcho.guardrails import (
+    honcho_durable_fact_guardrail,
+    honcho_peer_card_guardrail,
+)
 
 if TYPE_CHECKING:
     from honcho import Honcho
@@ -1083,7 +1087,9 @@ class HonchoSessionManager:
         Returns:
             True on success, False on failure.
         """
-        if not content or not content.strip():
+        blocked_reason = honcho_durable_fact_guardrail(content)
+        if blocked_reason:
+            logger.info("Blocked unsafe durable Honcho conclusion at manager sink: %s", blocked_reason)
             return False
 
         session = self._cache.get(session_key)
@@ -1160,6 +1166,11 @@ class HonchoSessionManager:
         Returns:
             Updated card on success, None on failure.
         """
+        blocked_reason = honcho_peer_card_guardrail(card)
+        if blocked_reason:
+            logger.info("Blocked unsafe durable Honcho peer card at manager sink: %s", blocked_reason)
+            return None
+
         session = self._cache.get(session_key)
         if not session:
             return None
