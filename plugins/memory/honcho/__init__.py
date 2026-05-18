@@ -219,6 +219,17 @@ def _honcho_conclusion_guardrail(conclusion: str) -> Optional[str]:
     return None
 
 
+def _honcho_card_guardrail(card: Any) -> Optional[str]:
+    """Return a block reason when a peer-card update contains unsafe durable facts."""
+    if not isinstance(card, list):
+        return "peer card must be a list of durable facts"
+    for index, fact in enumerate(card, start=1):
+        blocked_reason = _honcho_conclusion_guardrail(str(fact) if fact is not None else "")
+        if blocked_reason:
+            return f"peer-card fact {index}: {blocked_reason}"
+    return None
+
+
 # ---------------------------------------------------------------------------
 # MemoryProvider implementation
 # ---------------------------------------------------------------------------
@@ -1195,9 +1206,7 @@ class HonchoMemoryProvider(MemoryProvider):
         """Mirror built-in user profile writes as Honcho conclusions.
 
         ``metadata`` is accepted for compatibility with the write-origin
-        work landed in main (commit 6a957a74); it's not yet threaded into
-        the Honcho conclusion payload.  Left as a follow-up so this PR
-        stays focused on the 7-PR consolidation and its review follow-ups.
+        hook. It is not yet threaded into the Honcho conclusion payload.
         """
         if action != "add" or target != "user" or not content:
             return
@@ -1262,6 +1271,13 @@ class HonchoMemoryProvider(MemoryProvider):
                 peer = args.get("peer", "user")
                 card_update = args.get("card")
                 if card_update:
+                    blocked_reason = _honcho_card_guardrail(card_update)
+                    if blocked_reason:
+                        return tool_error(
+                            "Refusing to save unsafe durable Honcho peer card: "
+                            f"{blocked_reason}. Store transient work in Mission Control/NATS, "
+                            "docs in Obsidian, and procedures in skills instead."
+                        )
                     result = self._manager.set_peer_card(self._session_key, card_update, peer=peer)
                     if result is None:
                         return tool_error("Failed to update peer card.")

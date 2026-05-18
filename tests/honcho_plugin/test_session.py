@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from types import SimpleNamespace
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -485,9 +486,50 @@ class TestConcludeToolDispatch:
 
         provider.on_memory_write("add", "user", "User prefers concise local-time status reports.")
 
+        deadline = time.time() + 1.0
+        while provider._manager.create_conclusion.call_count == 0 and time.time() < deadline:
+            time.sleep(0.01)
+
         provider._manager.create_conclusion.assert_called_once_with(
             "telegram:123",
             "User prefers concise local-time status reports.",
+        )
+
+    def test_honcho_profile_blocks_unsafe_peer_card_updates(self):
+        import json
+
+        provider = HonchoMemoryProvider()
+        provider._session_initialized = True
+        provider._session_key = "telegram:123"
+        provider._manager = MagicMock()
+
+        result = provider.handle_tool_call(
+            "honcho_profile",
+            {"card": ["Assistant is currently working on PR #123."]},
+        )
+
+        parsed = json.loads(result)
+        assert "Refusing to save unsafe durable Honcho peer card" in parsed["error"]
+        assert "transient task state" in parsed["error"]
+        provider._manager.set_peer_card.assert_not_called()
+
+    def test_honcho_profile_allows_durable_peer_card_updates(self):
+        provider = HonchoMemoryProvider()
+        provider._session_initialized = True
+        provider._session_key = "telegram:123"
+        provider._manager = MagicMock()
+        provider._manager.set_peer_card.return_value = ["Prefers concise replies"]
+
+        result = provider.handle_tool_call(
+            "honcho_profile",
+            {"card": ["Prefers concise replies"]},
+        )
+
+        assert "Peer card updated (1 facts)" in result
+        provider._manager.set_peer_card.assert_called_once_with(
+            "telegram:123",
+            ["Prefers concise replies"],
+            peer="user",
         )
 
     def test_honcho_profile_can_target_explicit_peer_id(self):
