@@ -327,9 +327,10 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
   const progressPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
 
   return (
-    <div className="fixed inset-0 z-[1400] flex items-center justify-center bg-background/90 backdrop-blur-md">
-      <div className="w-full max-w-2xl rounded-xl border bg-card p-8 shadow-xl">
-        <div className="mb-6">
+    <div className="fixed inset-0 z-[1400] flex items-center justify-center bg-background/90 backdrop-blur-md p-4">
+      <div className="flex w-full max-w-2xl max-h-[90vh] flex-col rounded-xl border bg-card shadow-xl">
+        {/* Header -- always visible, never scrolls */}
+        <div className="flex-shrink-0 p-8 pb-4">
           <h2 className="text-2xl font-semibold tracking-tight">
             {failed ? 'Installation failed' : state.active ? 'Setting up Hermes Agent' : 'Finishing up'}
           </h2>
@@ -341,133 +342,139 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
           </p>
         </div>
 
-        {totalCount > 0 && (
-          <div className="mb-4">
-            <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-              <span>
-                {completedCount} of {totalCount} steps complete
-                {currentStage && ` -- now: ${formatStageName(currentStage)}`}
-              </span>
-              <span className="tabular-nums">{progressPct}%</span>
-            </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className={cn(
-                  'h-full transition-all duration-300',
-                  failed ? 'bg-destructive' : 'bg-primary'
-                )}
-                style={{ width: `${progressPct}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        {totalCount === 0 && state.active && (
-          <div className="mb-4 flex items-center gap-2 rounded-md border border-dashed bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Fetching installer manifest...</span>
-          </div>
-        )}
-
-        {failed && state.error && (
-          <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm">
-            <div className="mb-1 flex items-center gap-1.5 font-medium text-destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <span>Error</span>
-            </div>
-            <p className="text-foreground/90">{state.error}</p>
-          </div>
-        )}
-
-        {stages.length > 0 && (
-          <ol className="mb-4 space-y-1">
-            {stages.map(stage => (
-              <StageRow
-                key={stage.name}
-                descriptor={stage}
-                result={state.stages[stage.name]}
-                isCurrent={stage.name === currentStage}
-              />
-            ))}
-          </ol>
-        )}
-
-        <div className="border-t pt-3">
-          <button
-            type="button"
-            onClick={() => setLogOpen(v => !v)}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-          >
-            {logOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-            <span>{logOpen ? 'Hide installer output' : 'Show installer output'}</span>
-            <span className="ml-1 tabular-nums">({state.log.length} line{state.log.length === 1 ? '' : 's'})</span>
-          </button>
-
-          {logOpen && (
-            <div className={cn(
-              'mt-2 overflow-auto rounded-md border bg-muted/30 p-2 font-mono text-[11px] leading-relaxed',
-              failed ? 'max-h-96' : 'max-h-64'
-            )}>
-              {state.log.length === 0 ? (
-                <div className="text-muted-foreground">No output yet.</div>
-              ) : (
-                <>
-                  {state.log.map((entry, i) => (
-                    <div key={i} className="whitespace-pre-wrap break-words">
-                      {entry.stage ? <span className="text-muted-foreground/70">[{entry.stage}] </span> : null}
-                      <span>{entry.line}</span>
-                    </div>
-                  ))}
-                  <div ref={logEndRef} />
-                </>
-              )}
+        {/* Scrollable middle: progress, stages, error block, log */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-2">
+          {totalCount > 0 && (
+            <div className="mb-4">
+              <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                <span>
+                  {completedCount} of {totalCount} steps complete
+                  {currentStage && ` -- now: ${formatStageName(currentStage)}`}
+                </span>
+                <span className="tabular-nums">{progressPct}%</span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className={cn(
+                    'h-full transition-all duration-300',
+                    failed ? 'bg-destructive' : 'bg-primary'
+                  )}
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
             </div>
           )}
+
+          {totalCount === 0 && state.active && (
+            <div className="mb-4 flex items-center gap-2 rounded-md border border-dashed bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Fetching installer manifest...</span>
+            </div>
+          )}
+
+          {failed && state.error && (
+            <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm">
+              <div className="mb-1 flex items-center gap-1.5 font-medium text-destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <span>Error</span>
+              </div>
+              <p className="whitespace-pre-wrap break-words text-foreground/90">{state.error}</p>
+            </div>
+          )}
+
+          {stages.length > 0 && (
+            <ol className="mb-4 space-y-1">
+              {stages.map(stage => (
+                <StageRow
+                  key={stage.name}
+                  descriptor={stage}
+                  result={state.stages[stage.name]}
+                  isCurrent={stage.name === currentStage}
+                />
+              ))}
+            </ol>
+          )}
+
+          <div className="border-t pt-3">
+            <button
+              type="button"
+              onClick={() => setLogOpen(v => !v)}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {logOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+              <span>{logOpen ? 'Hide installer output' : 'Show installer output'}</span>
+              <span className="ml-1 tabular-nums">({state.log.length} line{state.log.length === 1 ? '' : 's'})</span>
+            </button>
+
+            {logOpen && (
+              <div className={cn(
+                'mt-2 overflow-auto rounded-md border bg-muted/30 p-2 font-mono text-[11px] leading-relaxed',
+                failed ? 'max-h-96' : 'max-h-64'
+              )}>
+                {state.log.length === 0 ? (
+                  <div className="text-muted-foreground">No output yet.</div>
+                ) : (
+                  <>
+                    {state.log.map((entry, i) => (
+                      <div key={i} className="whitespace-pre-wrap break-words">
+                        {entry.stage ? <span className="text-muted-foreground/70">[{entry.stage}] </span> : null}
+                        <span>{entry.line}</span>
+                      </div>
+                    ))}
+                    <div ref={logEndRef} />
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
+        {/* Footer -- always visible, never scrolls; only renders on failure */}
         {failed && (
-          <div className="mt-4 flex items-center justify-between gap-2">
-            <span className="text-xs text-muted-foreground">
-              Full transcript saved to <code className="rounded bg-muted/50 px-1 py-0.5 font-mono">%LOCALAPPDATA%\hermes\logs\</code>
-            </span>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={async () => {
-                  const text = state.log
-                    .map(entry => (entry.stage ? `[${entry.stage}] ${entry.line}` : entry.line))
-                    .join('\n')
-                  const fullText = state.error ? `Error: ${state.error}\n\n${text}` : text
-                  try {
-                    await navigator.clipboard.writeText(fullText)
-                    setCopied(true)
-                    window.setTimeout(() => setCopied(false), 1500)
-                  } catch {
-                    // ignore -- some environments forbid clipboard writes
-                  }
-                }}
-              >
-                {copied ? 'Copied!' : 'Copy output'}
-              </Button>
-              <Button
-                variant="default"
-                size="sm"
-                onClick={async () => {
-                  // Tell main.cjs to clear its latched failure BEFORE we
-                  // reload. Otherwise the renderer reload calls getConnection
-                  // and main short-circuits to the latched error without
-                  // re-running install.ps1.
-                  try {
-                    await window.hermesDesktop?.resetBootstrap?.()
-                  } catch {
-                    // best-effort -- continue with reload regardless
-                  }
-                  window.location.reload()
-                }}
-              >
-                Reload and retry
-              </Button>
+          <div className="flex-shrink-0 border-t bg-card p-4">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">
+                Full transcript saved to <code className="rounded bg-muted/50 px-1 py-0.5 font-mono">%LOCALAPPDATA%\hermes\logs\</code>
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={async () => {
+                    const text = state.log
+                      .map(entry => (entry.stage ? `[${entry.stage}] ${entry.line}` : entry.line))
+                      .join('\n')
+                    const fullText = state.error ? `Error: ${state.error}\n\n${text}` : text
+                    try {
+                      await navigator.clipboard.writeText(fullText)
+                      setCopied(true)
+                      window.setTimeout(() => setCopied(false), 1500)
+                    } catch {
+                      // ignore -- some environments forbid clipboard writes
+                    }
+                  }}
+                >
+                  {copied ? 'Copied!' : 'Copy output'}
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={async () => {
+                    // Tell main.cjs to clear its latched failure BEFORE we
+                    // reload. Otherwise the renderer reload calls getConnection
+                    // and main short-circuits to the latched error without
+                    // re-running install.ps1.
+                    try {
+                      await window.hermesDesktop?.resetBootstrap?.()
+                    } catch {
+                      // best-effort -- continue with reload regardless
+                    }
+                    window.location.reload()
+                  }}
+                >
+                  Reload and retry
+                </Button>
+              </div>
             </div>
           </div>
         )}

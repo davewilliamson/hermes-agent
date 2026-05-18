@@ -859,6 +859,12 @@ function Install-Repository {
         if ($repoValid) {
             Write-Info "Existing installation found, updating..."
             Push-Location $InstallDir
+            # Wrap the entire fetch+checkout block in EAP=Continue so git's
+            # routine stderr output (e.g. 'From <url>' info lines emitted by
+            # `git fetch`) doesn't terminate the script under the global
+            # EAP=Stop.  We rely on $LASTEXITCODE for actual failures.
+            $prevEAP = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
             try {
                 git -c windows.appendAtomically=false fetch origin
                 if ($LASTEXITCODE -ne 0) { throw "git fetch failed (exit $LASTEXITCODE)" }
@@ -868,11 +874,11 @@ function Install-Repository {
                 if ($Commit) {
                     # Make sure we have the commit locally (a tag-less commit
                     # SHA isn't always reachable from any one branch fetch).
-                    git -c windows.appendAtomically=false fetch origin $Commit 2>$null
+                    git -c windows.appendAtomically=false fetch origin $Commit
                     git -c windows.appendAtomically=false checkout --detach $Commit
                     if ($LASTEXITCODE -ne 0) { throw "git checkout $Commit failed (exit $LASTEXITCODE)" }
                 } elseif ($Tag) {
-                    git -c windows.appendAtomically=false fetch origin "refs/tags/${Tag}:refs/tags/${Tag}" 2>$null
+                    git -c windows.appendAtomically=false fetch origin "refs/tags/${Tag}:refs/tags/${Tag}"
                     git -c windows.appendAtomically=false checkout --detach "refs/tags/$Tag"
                     if ($LASTEXITCODE -ne 0) { throw "git checkout tag $Tag failed (exit $LASTEXITCODE)" }
                 } else {
@@ -882,6 +888,7 @@ function Install-Repository {
                     if ($LASTEXITCODE -ne 0) { throw "git pull failed (exit $LASTEXITCODE)" }
                 }
             } finally {
+                $ErrorActionPreference = $prevEAP
                 Pop-Location
             }
             $didUpdate = $true
@@ -999,22 +1006,29 @@ function Install-Repository {
     # the exact ref out as a detached HEAD.  Skipped for the in-place update
     # path (above) since that already routed via the same precedence.
     if (-not $didUpdate) {
-        if ($Commit) {
-            Write-Info "Pinning to commit $Commit..."
-            git -c windows.appendAtomically=false fetch origin $Commit 2>$null
-            git -c windows.appendAtomically=false checkout --detach $Commit
-            if ($LASTEXITCODE -ne 0) {
-                Pop-Location
-                throw "git checkout $Commit failed (exit $LASTEXITCODE)"
+        # Same EAP=Continue wrap as the update path -- git fetch's 'From <url>'
+        # info line goes to stderr and would terminate the script under the
+        # global EAP=Stop otherwise.  We check $LASTEXITCODE for real errors.
+        $prevEAP = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            if ($Commit) {
+                Write-Info "Pinning to commit $Commit..."
+                git -c windows.appendAtomically=false fetch origin $Commit
+                git -c windows.appendAtomically=false checkout --detach $Commit
+                if ($LASTEXITCODE -ne 0) {
+                    throw "git checkout $Commit failed (exit $LASTEXITCODE)"
+                }
+            } elseif ($Tag) {
+                Write-Info "Pinning to tag $Tag..."
+                git -c windows.appendAtomically=false fetch origin "refs/tags/${Tag}:refs/tags/${Tag}"
+                git -c windows.appendAtomically=false checkout --detach "refs/tags/$Tag"
+                if ($LASTEXITCODE -ne 0) {
+                    throw "git checkout tag $Tag failed (exit $LASTEXITCODE)"
+                }
             }
-        } elseif ($Tag) {
-            Write-Info "Pinning to tag $Tag..."
-            git -c windows.appendAtomically=false fetch origin "refs/tags/${Tag}:refs/tags/${Tag}" 2>$null
-            git -c windows.appendAtomically=false checkout --detach "refs/tags/$Tag"
-            if ($LASTEXITCODE -ne 0) {
-                Pop-Location
-                throw "git checkout tag $Tag failed (exit $LASTEXITCODE)"
-            }
+        } finally {
+            $ErrorActionPreference = $prevEAP
         }
     }
 
