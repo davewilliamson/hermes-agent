@@ -44,6 +44,7 @@ declare global {
       onBackendExit: (callback: (payload: BackendExit) => void) => () => void
       onBootProgress: (callback: (payload: DesktopBootProgress) => void) => () => void
       getBootstrapState: () => Promise<DesktopBootstrapState>
+      resetBootstrap: () => Promise<{ ok: boolean }>
       onBootstrapEvent: (callback: (payload: DesktopBootstrapEvent) => void) => () => void
       getVersion: () => Promise<DesktopVersionInfo>
       updates: {

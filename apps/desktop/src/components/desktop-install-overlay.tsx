@@ -174,7 +174,7 @@ function applyEvent(state: DesktopBootstrapState, ev: DesktopBootstrapEvent): De
   }
   if (ev.type === 'log') {
     const next = state.log.concat({ ts: Date.now(), stage: ev.stage ?? null, line: ev.line })
-    while (next.length > 200) next.shift()
+    while (next.length > 500) next.shift()
     return { ...state, log: next }
   }
   if (ev.type === 'complete') {
@@ -201,6 +201,7 @@ function applyEvent(state: DesktopBootstrapState, ev: DesktopBootstrapEvent): De
 export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayProps) {
   const [state, setState] = useState<DesktopBootstrapState>(EMPTY_STATE)
   const [logOpen, setLogOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
   const logEndRef = useRef<HTMLDivElement | null>(null)
 
   // Subscribe to bootstrap events + load initial snapshot
@@ -234,6 +235,14 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
       logEndRef.current.scrollIntoView({ behavior: 'auto', block: 'end' })
     }
   }, [state.log.length, logOpen])
+
+  // Auto-expand the log panel when a bootstrap fails so the user immediately
+  // sees the install.ps1 output. Without this, the failure block shows just
+  // the top-level error message and the user has to click "Show installer
+  // output" to see WHY the stage failed.
+  useEffect(() => {
+    if (state.error) setLogOpen(true)
+  }, [state.error])
 
   // Mount logic: show whenever a bootstrap is in flight, completed-with-error,
   // or actively running with a manifest. Hide entirely after a successful
@@ -395,7 +404,10 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
           </button>
 
           {logOpen && (
-            <div className="mt-2 max-h-64 overflow-auto rounded-md border bg-muted/30 p-2 font-mono text-[11px] leading-relaxed">
+            <div className={cn(
+              'mt-2 overflow-auto rounded-md border bg-muted/30 p-2 font-mono text-[11px] leading-relaxed',
+              failed ? 'max-h-96' : 'max-h-64'
+            )}>
               {state.log.length === 0 ? (
                 <div className="text-muted-foreground">No output yet.</div>
               ) : (
@@ -414,19 +426,49 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
         </div>
 
         {failed && (
-          <div className="mt-4 flex justify-end gap-2">
-            <Button
-              variant="default"
-              onClick={() => {
-                // No retry IPC yet (Phase 1G); for now suggest a relaunch.
-                // The user re-launches the app and main.cjs's resolveHermesBackend
-                // runs again -- if it still returns bootstrap-needed, the runner
-                // re-runs install.ps1's stages (idempotent).
-                window.location.reload()
-              }}
-            >
-              Reload and retry
-            </Button>
+          <div className="mt-4 flex items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground">
+              Full transcript saved to <code className="rounded bg-muted/50 px-1 py-0.5 font-mono">%LOCALAPPDATA%\hermes\logs\</code>
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={async () => {
+                  const text = state.log
+                    .map(entry => (entry.stage ? `[${entry.stage}] ${entry.line}` : entry.line))
+                    .join('\n')
+                  const fullText = state.error ? `Error: ${state.error}\n\n${text}` : text
+                  try {
+                    await navigator.clipboard.writeText(fullText)
+                    setCopied(true)
+                    window.setTimeout(() => setCopied(false), 1500)
+                  } catch {
+                    // ignore -- some environments forbid clipboard writes
+                  }
+                }}
+              >
+                {copied ? 'Copied!' : 'Copy output'}
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={async () => {
+                  // Tell main.cjs to clear its latched failure BEFORE we
+                  // reload. Otherwise the renderer reload calls getConnection
+                  // and main short-circuits to the latched error without
+                  // re-running install.ps1.
+                  try {
+                    await window.hermesDesktop?.resetBootstrap?.()
+                  } catch {
+                    // best-effort -- continue with reload regardless
+                  }
+                  window.location.reload()
+                }}
+              >
+                Reload and retry
+              </Button>
+            </div>
           </div>
         )}
       </div>

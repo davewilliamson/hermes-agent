@@ -345,6 +345,12 @@ app.setAboutPanelOptions({
 let mainWindow = null
 let hermesProcess = null
 let connectionPromise = null
+// Latched bootstrap failure: when the first-launch install fails, we hold
+// onto the error so subsequent startHermes() calls (e.g. the renderer's
+// ensureGatewayOpen retrying after the WS won't open) return the same error
+// instead of re-running install.ps1 in a hot loop. Cleared explicitly by
+// the renderer's "Reload and retry" path or by quitting the app.
+let bootstrapFailure = null
 let connectionConfigCache = null
 const hermesLog = []
 const previewWatchers = new Map()
@@ -492,7 +498,13 @@ function broadcastBootProgress() {
 //
 // The snapshot is queryable via the hermes:bootstrap:get IPC handler so a
 // reloaded renderer (e.g. devtools reload during dev) recovers state.
-const BOOTSTRAP_LOG_RING_MAX = 200
+// Bootstrap log ring: bounded buffer so a long install (npm + playwright
+// downloads can emit thousands of lines) doesn't grow unbounded in memory
+// AND so the renderer's getBootstrapState() reply stays a reasonable size.
+// We keep enough to cover an entire failed stage's transcript so the
+// 'Copy output' button gives the user actually-actionable context, not
+// just the last few lines.
+const BOOTSTRAP_LOG_RING_MAX = 500
 let bootstrapState = {
   active: false,
   manifest: null,
@@ -1411,11 +1423,18 @@ async function ensureRuntime(backend) {
     })
 
     if (!bootstrapResult.ok) {
-      throw new Error(
+      const bootstrapError = new Error(
         `Hermes bootstrap failed${bootstrapResult.failedStage ? ` at stage '${bootstrapResult.failedStage}'` : ''}: ` +
           `${bootstrapResult.error || 'unknown error'}. ` +
           `Check ${path.join(HERMES_HOME, 'logs', 'desktop.log')} for the full transcript.`
       )
+      bootstrapError.isBootstrapFailure = true
+      bootstrapError.failedStage = bootstrapResult.failedStage || null
+      // Latch the failure so subsequent startHermes() calls return this
+      // same error without re-running install.ps1.  Cleared by the
+      // hermes:bootstrap:reset IPC (renderer's "Reload and retry").
+      bootstrapFailure = bootstrapError
+      throw bootstrapError
     }
 
     rememberLog('[bootstrap] bootstrap complete; marker written. Re-resolving backend.')
@@ -2571,6 +2590,15 @@ function resetHermesConnection() {
 }
 
 async function startHermes() {
+  // Latched-failure short-circuit: once bootstrap has failed in this
+  // process, every subsequent startHermes() call re-throws the same error
+  // without re-running install.ps1. This prevents the renderer's
+  // ensureGatewayOpen retries (and any other getConnection callers) from
+  // restarting a 5-10 minute install loop while the user is still reading
+  // the failure overlay.
+  if (bootstrapFailure) {
+    throw bootstrapFailure
+  }
   if (connectionPromise) return connectionPromise
 
   connectionPromise = (async () => {
@@ -2796,6 +2824,25 @@ function createWindow() {
 }
 
 ipcMain.handle('hermes:connection', async () => startHermes())
+ipcMain.handle('hermes:bootstrap:reset', async () => {
+  // Renderer's "Reload and retry" path. Clear the latched failure and
+  // reset connection state so the next startHermes() call restarts the
+  // full backend flow (including a fresh runBootstrap pass).
+  rememberLog('[bootstrap] reset requested by renderer; clearing latched failure')
+  bootstrapFailure = null
+  connectionPromise = null
+  bootstrapState = {
+    active: false,
+    manifest: null,
+    stages: {},
+    error: null,
+    log: [],
+    startedAt: null,
+    completedAt: null,
+    unsupportedPlatform: null
+  }
+  return { ok: true }
+})
 ipcMain.handle('hermes:boot-progress:get', async () => bootProgressState)
 ipcMain.handle('hermes:bootstrap:get', async () => getBootstrapState())
 ipcMain.handle('hermes:connection-config:get', async () => sanitizeDesktopConnectionConfig())

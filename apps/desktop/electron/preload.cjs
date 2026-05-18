@@ -87,6 +87,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // current snapshot via getBootstrapState() to recover after a devtools
   // reload mid-bootstrap.
   getBootstrapState: () => ipcRenderer.invoke('hermes:bootstrap:get'),
+  resetBootstrap: () => ipcRenderer.invoke('hermes:bootstrap:reset'),
   onBootstrapEvent: callback => {
     const listener = (_event, payload) => callback(payload)
     ipcRenderer.on('hermes:bootstrap:event', listener)
