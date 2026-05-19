@@ -24,6 +24,10 @@ from typing import Any, Dict, List, Optional
 
 from agent.memory_manager import sanitize_context
 from agent.memory_provider import MemoryProvider
+from plugins.memory.honcho.guardrails import (
+    honcho_durable_fact_guardrail,
+    honcho_peer_card_guardrail,
+)
 from tools.registry import tool_error
 
 logger = logging.getLogger(__name__)
@@ -1171,6 +1175,11 @@ class HonchoMemoryProvider(MemoryProvider):
         if not self._manager or not self._session_key:
             return
 
+        blocked_reason = honcho_durable_fact_guardrail(content)
+        if blocked_reason:
+            logger.info("Honcho memory mirror skipped unsafe durable fact: %s", blocked_reason)
+            return
+
         def _write():
             try:
                 self._manager.create_conclusion(self._session_key, content)
@@ -1223,6 +1232,9 @@ class HonchoMemoryProvider(MemoryProvider):
                 peer = args.get("peer", "user")
                 card_update = args.get("card")
                 if card_update:
+                    blocked_reason = honcho_peer_card_guardrail(card_update)
+                    if blocked_reason:
+                        return tool_error(f"Refusing to save unsafe durable Honcho peer card: {blocked_reason}.")
                     result = self._manager.set_peer_card(self._session_key, card_update, peer=peer)
                     if result is None:
                         return tool_error("Failed to update peer card.")
@@ -1296,6 +1308,9 @@ class HonchoMemoryProvider(MemoryProvider):
                     if ok:
                         return json.dumps({"result": f"Conclusion {delete_id} deleted."})
                     return tool_error(f"Failed to delete conclusion {delete_id}.")
+                blocked_reason = honcho_durable_fact_guardrail(conclusion)
+                if blocked_reason:
+                    return tool_error(f"Refusing to save unsafe durable Honcho conclusion: {blocked_reason}.")
                 ok = self._manager.create_conclusion(self._session_key, conclusion, peer=peer)
                 if ok:
                     return json.dumps({"result": f"Conclusion saved for {peer}: {conclusion}"})

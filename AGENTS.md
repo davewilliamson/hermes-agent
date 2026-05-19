@@ -66,6 +66,18 @@ hermes-agent/
 `gateway.log` when running the gateway. Profile-aware via `get_hermes_home()`.
 Browse with `hermes logs [--follow] [--level ...] [--session ...]`.
 
+## Agent State / Memory Boundaries
+
+Multi-agent deployments must keep state in the right layer:
+
+- **Honcho:** durable identity, preferences, stable facts, and promoted knowledge only.
+- **Mission Control / NATS:** live task state, queues, handoffs, status, blockers, and "what am I working on now".
+- **Obsidian / docs:** plans, designs, decisions, and long-form project notes.
+- **Skills:** reusable procedures and runbooks learned from completed work.
+
+Do not write active task progress, ephemeral IDs, auth/device flows, raw logs, stack traces,
+or secret-like material into Honcho conclusions or peer cards.
+
 ## File Dependency Chain
 
 ```
